@@ -63,6 +63,40 @@ func cacheKey(network, ipVersion string) string {
 	return network + ipVersion
 }
 
+// addrFor returns the address cached for the given protocol and IP version.
+func (e *proxyIpEntry) addrFor(key string) string {
+	switch key {
+	case "tcp4":
+		return e.tcp4Addr
+	case "tcp6":
+		return e.tcp6Addr
+	case "udp4":
+		return e.udp4Addr
+	case "udp6":
+		return e.udp6Addr
+	}
+	return ""
+}
+
+// setAddr stores the address cached for the given protocol and IP version.
+func (e *proxyIpEntry) setAddr(key, addr string) {
+	switch key {
+	case "tcp4":
+		e.tcp4Addr = addr
+	case "tcp6":
+		e.tcp6Addr = addr
+	case "udp4":
+		e.udp4Addr = addr
+	case "udp6":
+		e.udp6Addr = addr
+	}
+}
+
+// isEmpty reports whether no address is cached for any protocol/IP version.
+func (e *proxyIpEntry) isEmpty() bool {
+	return e.tcp4Addr == "" && e.tcp6Addr == "" && e.udp4Addr == "" && e.udp6Addr == ""
+}
+
 // NewProxyIpCache creates a new proxy IP cache.
 func NewProxyIpCache() *ProxyIpCache {
 	return &ProxyIpCache{
@@ -125,17 +159,7 @@ func (c *ProxyIpCache) Set(originalAddr, actualAddr string, network string, ipVe
 	entry.checkCycle = cycle
 
 	// Update the appropriate address based on network type and IP version.
-	key := cacheKey(network, ipVersion)
-	switch key {
-	case "tcp4":
-		entry.tcp4Addr = actualAddr
-	case "tcp6":
-		entry.tcp6Addr = actualAddr
-	case "udp4":
-		entry.udp4Addr = actualAddr
-	case "udp6":
-		entry.udp6Addr = actualAddr
-	}
+	entry.setAddr(cacheKey(network, ipVersion), actualAddr)
 
 	if logger.IsLevelEnabled(logrus.DebugLevel) {
 		logger.WithFields(logrus.Fields{
@@ -201,18 +225,7 @@ func (c *ProxyIpCache) GetWithCycleAndIpVersion(proxyAddr string, network string
 	}
 
 	// Return the protocol and IP version specific cached address.
-	var cachedAddr string
-	key := cacheKey(network, ipVersion)
-	switch key {
-	case "tcp4":
-		cachedAddr = entry.tcp4Addr
-	case "tcp6":
-		cachedAddr = entry.tcp6Addr
-	case "udp4":
-		cachedAddr = entry.udp4Addr
-	case "udp6":
-		cachedAddr = entry.udp6Addr
-	}
+	cachedAddr := entry.addrFor(cacheKey(network, ipVersion))
 	c.RUnlock()
 
 	if cachedAddr == "" {
@@ -270,20 +283,10 @@ func (c *ProxyIpCache) InvalidateProtocolAndIpVersion(proxyAddr, network, ipVers
 		return
 	}
 
-	key := cacheKey(network, ipVersion)
-	switch key {
-	case "tcp4":
-		entry.tcp4Addr = ""
-	case "tcp6":
-		entry.tcp6Addr = ""
-	case "udp4":
-		entry.udp4Addr = ""
-	case "udp6":
-		entry.udp6Addr = ""
-	}
+	entry.setAddr(cacheKey(network, ipVersion), "")
 
 	// If all addresses are empty now, remove the entry entirely
-	if entry.tcp4Addr == "" && entry.tcp6Addr == "" && entry.udp4Addr == "" && entry.udp6Addr == "" {
+	if entry.isEmpty() {
 		delete(c.cache, proxyAddr)
 	} else {
 		logger.WithFields(logrus.Fields{
